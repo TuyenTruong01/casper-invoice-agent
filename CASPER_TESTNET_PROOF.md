@@ -14,7 +14,7 @@
 - Contract deploy hash: 1864adf9f8a6079b1f1aa64666df21d05ed4afe151777b9d4db31ca22f922eef
 - Contract deploy block height: 8347564
 
-## Demo payment proof
+## Original CLI proof
 
 - Proposal ID: proposal-demo-002
 - Proof hash: proof-hash-demo-002
@@ -23,9 +23,22 @@
 - Get proof deploy hash: 32cd10f76d60833071dcf7f464fed1261a79306965a624f76eb673e195c24175
 - Get proof block height: 8347716
 
+## Browser wallet proof
+
+The dApp supports real Casper Wallet execution from the browser.
+
+- Browser wallet deploy hash: 9df3e0e174023ab3afbc7b3ca7e528887f25c334c346be1d5437594aded21e07
+- Browser wallet block height: 8348729
+- Execution result: error_message null
+- Cost: 20000000000 motes
+- Signer public key: 02021b723610797a778fb372b610ca70ce2a7ec675bf5e631920c4b155ed96a71942
+
 ## Verified flow
 
 1. Smart contract deployed successfully on Casper Testnet.
-2. `record_payment_proof` was called successfully.
-3. `get_payment_proof` was called successfully.
-4. Frontend displays the confirmed Casper Testnet proof in the payment workflow.
+2. `record_payment_proof` was called successfully through CLI.
+3. `get_payment_proof` was called successfully through CLI.
+4. Casper Wallet was connected in the browser.
+5. The frontend mapped the connected public key to the Manager role.
+6. The Manager signed a `record_payment_proof` deploy through Casper Wallet.
+7. The signed deploy was submitted to Casper Testnet and executed successfully.
