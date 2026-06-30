@@ -1,3 +1,12 @@
 node_modules/
 .next/
 .env.local
+
+# Casper build output
+**/target/
+target/
+
+# Secrets
+.env.local
+keys/
+*.pem
