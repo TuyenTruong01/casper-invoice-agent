@@ -8,6 +8,20 @@
 
 ## Contract
 
+### Active Contract V2
+
+- Contract hash: contract-665c9c51d288b2228b6146fe550744dc05002ba002f58cfd9016b4c36bdd7f27
+- Contract package hash: contract-package-4838cb34754dc5ed8c5dfd0f61e688325255b6cbbe61358ad39cb1141e609aae
+- Deployment transaction hash: 093c5fbcc3d8f242045e18fa026ba90c997443a44f4f44a0ec188e95ab6ae818
+- Deployment block height: 8574143
+- Execution result: `error_message: null`
+- Execution consumed: 93310092878 motes (payment limit: 150000000000 motes)
+- WASM size: 103139 bytes
+- WASM SHA-256: c1626458851506b6df7100d1f07493ca0b81d722d0b1e630671a37e00e4a49f3
+- Initial Manager and Executor: account-hash-1fb18f386255d46ef8ac0d2131bed54e87159848dde38726068997a6331b880d
+
+### Archived proof-only Contract V1
+
 - Named key: invoice_payment_proof_contract
 - Contract hash: contract-4e2f1bbc04fdb44e2654b014124d21b48457330b9e9031813fa6b8e1608bc991
 - Contract package hash: contract-package-36e343e0079db3d7d49b13913b78a07ddde0459ed2c0ba1b99d75826ad0edd5b

@@ -1,12 +1,34 @@
+# Node / Next.js
 node_modules/
 .next/
-.env.local
 
-# Casper build output
+# Casper / Rust build output
 **/target/
 target/
 
-# Secrets
+# Environment and secrets
+.env
 .env.local
+.env.*.local
 keys/
 *.pem
+*.key
+
+# Runtime invoice data
+data/runtime/
+data/uploads/
+
+# SQLite runtime files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

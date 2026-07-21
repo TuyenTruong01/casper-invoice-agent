@@ -1,3 +1,3 @@
 import './styles.css';
-export const metadata = { title: 'Casper Invoice Agent', description: 'AI Invoice & Escrow Agent on Casper Testnet' };
+export const metadata = { title: 'InvoiceOS — Casper Proof Console', description: 'AI invoice risk and payment-proof anchoring on Casper Testnet' };
 export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en"><body>{children}</body></html>}

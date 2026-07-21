@@ -5,9 +5,12 @@ const {
   HttpHandler,
   RpcClient,
   PrivateKey,
+  PublicKey,
   KeyAlgorithm,
   InitiatorAddr,
   Args,
+  CLTypeByteArray,
+  CLValue,
   Timestamp,
   Duration,
   TransactionScheduling,
@@ -19,7 +22,6 @@ const {
   TransactionV1Payload,
   TransactionV1,
   Transaction,
-  FixedMode,
   PaymentLimitedMode,
   PricingMode,
 } = require('casper-js-sdk');
@@ -29,6 +31,10 @@ const NODE_ADDRESS =
 
 const CHAIN_NAME =
   process.env.CASPER_CHAIN_NAME || 'casper-test';
+
+const PAYMENT_AMOUNT = process.env.CASPER_PAYMENT_AMOUNT;
+const INITIAL_MANAGERS = (process.env.CASPER_INITIAL_MANAGERS || '').split(',').map(value => value.trim()).filter(Boolean);
+const INITIAL_EXECUTORS = (process.env.CASPER_INITIAL_EXECUTORS || '').split(',').map(value => value.trim()).filter(Boolean);
 
 const SECRET_KEY_PATH = process.env.CASPER_SECRET_KEY_PATH;
 
@@ -57,6 +63,12 @@ function requireFile(filePath, label) {
 }
 
 async function main() {
+  if (CHAIN_NAME !== 'casper-test' && process.env.CASPER_ALLOW_NON_TESTNET !== '1') {
+    throw new Error('Refusing non-testnet chain. Set CASPER_ALLOW_NON_TESTNET=1 only after explicit review.');
+  }
+  if (!PAYMENT_AMOUNT || !/^\d+$/.test(PAYMENT_AMOUNT)) throw new Error('Missing or invalid CASPER_PAYMENT_AMOUNT');
+  if (!INITIAL_MANAGERS.length) throw new Error('CASPER_INITIAL_MANAGERS must contain at least one public key');
+  if (!INITIAL_EXECUTORS.length) throw new Error('CASPER_INITIAL_EXECUTORS must contain at least one public key');
   console.log('Node address:', NODE_ADDRESS);
   console.log('Chain name:', CHAIN_NAME);
   console.log('WASM path:', WASM_PATH);
@@ -92,16 +104,25 @@ async function main() {
 
   const target = new TransactionTarget(undefined, undefined, session);
 
-  const fixed = new FixedMode();
-  fixed.gasPriceTolerance = 255;
-  fixed.additionalComputationFactor = 2;
+  const paymentLimited = new PaymentLimitedMode();
+  paymentLimited.paymentAmount = Number(PAYMENT_AMOUNT);
+  paymentLimited.gasPriceTolerance = 1;
+  paymentLimited.standardPayment = true;
 
   const pricingMode = new PricingMode();
-  pricingMode.fixed = fixed;
+  pricingMode.paymentLimited = paymentLimited;
+
+  const accountList = values => CLValue.newCLList(
+    new CLTypeByteArray(32),
+    values.map(value => CLValue.newCLByteArray(PublicKey.fromHex(value).accountHash().hashBytes))
+  );
+  const installArgs = Args.fromMap(new Map());
+  installArgs.insert('initial_managers', accountList(INITIAL_MANAGERS));
+  installArgs.insert('initial_executors', accountList(INITIAL_EXECUTORS));
 
   const payload = TransactionV1Payload.build({
     initiatorAddr: new InitiatorAddr(publicKey),
-    args: Args.fromMap(new Map()),
+    args: installArgs,
     ttl: new Duration(30 * 60 * 1000),
     entryPoint: new TransactionEntryPoint(TransactionEntryPointEnum.Call),
     pricingMode,
@@ -114,26 +135,30 @@ async function main() {
   const txV1 = TransactionV1.makeTransactionV1(payload);
   const tx = Transaction.fromTransactionV1(txV1);
 
-  tx.sign(privateKey);
-
-  console.log('Transaction built and signed.');
+  console.log('Unsigned transaction built.');
   console.log('Transaction hash:', tx.hash.toHex());
 
   console.log('');
   console.log('Transaction JSON preview:');
   try {
-    console.log(JSON.stringify(tx.toJSON(), null, 2).slice(0, 5000));
+    const preview = tx.toJSON();
+    if (preview?.payload?.fields?.target?.Session?.module_bytes) {
+      preview.payload.fields.target.Session.module_bytes = `<${wasmBytes.length} bytes omitted>`;
+    }
+    console.log(JSON.stringify(preview, null, 2));
   } catch (e) {
     console.log('Could not print tx.toJSON():', e);
   }
 
   if (!SEND) {
     console.log('');
-    console.log('DRY RUN ONLY. No transaction was submitted.');
+    console.log('DRY RUN ONLY. Transaction was not signed or submitted.');
     console.log('To submit, run again with CASPER_SEND=1');
     return;
   }
 
+  tx.sign(privateKey);
+  console.log('Transaction signed for submission.');
   console.log('');
   console.log('Submitting transaction...');
   const result = await client.putTransaction(tx);
@@ -144,6 +169,26 @@ async function main() {
   console.log('');
   console.log('Submitted transaction hash:');
   console.log(tx.hash.toHex());
+
+  const transactionHash = tx.hash.toHex();
+  const deadline = Date.now() + 20 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const response = await fetch(NODE_ADDRESS, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'info_get_transaction', params:{ transaction_hash:{ Version1:transactionHash }, finalized_approvals:true } }),
+    });
+    const rpc = await response.json();
+    const info = rpc?.result?.execution_info;
+    const execution = info?.execution_result?.Version2;
+    if (execution) {
+      console.log('Execution block height:', info.block_height);
+      console.log('Execution error:', execution.error_message ?? null);
+      if (execution.error_message != null) throw new Error(`On-chain execution failed: ${execution.error_message}`);
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 10_000));
+  }
+  throw new Error('Timed out waiting for final execution result');
 }
 
 main().catch((err) => {

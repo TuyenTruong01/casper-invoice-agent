@@ -17,7 +17,7 @@ const MANAGER_PUBLIC_KEY =
   '02021b723610797a778fb372b610ca70ce2a7ec675bf5e631920c4b155ed96a71942';
 
 const CHAIN_NAME = 'casper-test';
-const NAMED_KEY = 'invoice_payment_proof_contract';
+const NAMED_KEY = 'invoice_payment_proof_contract_v2';
 const ENTRY_POINT = 'record_payment_proof';
 const PAYMENT_AMOUNT = '20000000000';
 
@@ -25,21 +25,11 @@ const now = Date.now();
 const proposalId = `proposal-browser-${now}`;
 const proofHash = `browser-proof-${now}`;
 
-const createdAt = new Date()
-  .toISOString()
-  .replace(/[-:TZ.]/g, '')
-  .slice(0, 14);
-
 const account = PublicKey.fromHex(MANAGER_PUBLIC_KEY);
 
 const runtimeArgs = Args.fromMap({});
 runtimeArgs.insert('proposal_id', CLValue.newCLString(proposalId));
-runtimeArgs.insert('proof_hash', CLValue.newCLString(proofHash));
-runtimeArgs.insert('invoice_count', CLValue.newCLUInt32('3'));
-runtimeArgs.insert('total_amount', CLValue.newCLUint64('125000'));
-runtimeArgs.insert('approver', CLValue.newCLString('Browser Manager'));
-runtimeArgs.insert('executor', CLValue.newCLString('Casper Invoice Agent Web'));
-runtimeArgs.insert('created_at', CLValue.newCLUint64(createdAt));
+runtimeArgs.insert('payment_proof', CLValue.newCLString(proofHash));
 
 const session = new ExecutableDeployItem();
 session.storedContractByName = new StoredContractByName(
@@ -73,7 +63,6 @@ console.log(outPath);
 console.log('');
 console.log('Proposal ID:', proposalId);
 console.log('Proof hash:', proofHash);
-console.log('Created at:', createdAt);
 console.log('Deploy hash:', json.hash);
 console.log('Approvals:', json.approvals?.length || 0);
 console.log('Chain:', json.header?.chain_name || json.header?.chainName);

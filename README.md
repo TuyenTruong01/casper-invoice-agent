@@ -1,32 +1,53 @@
 # Casper Invoice Agent
 
-AI-powered Accounts Payable workflow for the Casper Agentic Buildathon.
+Casper Invoice Agent is an AI-assisted accounts-payable workflow that processes real invoice PDFs, extracts structured data with Gemini, applies deterministic risk and compliance rules, requires human approval, and anchors immutable approval and payment-proof records on Casper Testnet.
 
-## MVP
-- 50 synthetic vendor invoice PDFs in `public/invoices`
-- Whitelisted Casper public keys
-- Roles: Admin, Manager, Employee
-- AI analysis mock that creates a payment proposal
-- Manager approval flow
-- Payment proof mock transaction log
-- Wallet Management module in Settings
+The current version focuses on:
 
-## Run locally
+- Real PDF ingestion and text extraction
+- Schema-validated Gemini invoice extraction
+- Autonomous risk and compliance decisions
+- Persistent invoice and execution state in SQLite
+- Human-approved Casper transactions
+- On-chain RBAC and invoice lifecycle enforcement
+- Verifiable approval and payment-proof evidence
 
-```bash
-cd "/d/Tuyen_Lam viec/02 Web Hackathon/02 Casper/casper-invoice-agent-v5"
-npm install
-npm run dev
-```
+> Important: this project does not transfer CSPR, USDC or other tokens to vendors and does not implement escrow. In Contract V2, `PAID` means that an approved payment-proof record has been anchored on Casper.
 
-Open `http://localhost:3000`.
+---
 
-## Demo wallets
+## Problem
 
-- Admin: `020290622992011fd65e6fece166b275c8414bd0983f3542635c4c09916d5bca8bf8`
-- Manager: `02021b723610797a778fb372b610ca70ce2a7ec675bf5e631920c4b155ed96a71942`
-- Employee: `02020a4ddd31f32b08d607f8013ec80bca8ecf73090fa163eab9c93da2d099ca264e`
-- Judge Demo: `0202429fc3d574475d62bebf3e66e85fc88e251c8884608173bf766f77acdd518c04`
+Business invoice processing is often fragmented across email, PDF files, spreadsheets and manual approval workflows.
 
-## Next step
-Replace the mock payment proof with real Casper Testnet contract calls.
+This creates several risks:
+
+- Duplicate invoices
+- Duplicate files with modified names
+- Abnormal invoice amounts
+- Vendor wallet mismatches
+- Missing required fields
+- Payments above company limits
+- Weak audit trails
+- Approval records that can be modified later
+
+Casper Invoice Agent combines document intelligence, deterministic risk rules, human approval and tamper-resistant on-chain evidence.
+
+---
+
+## Solution
+
+The workflow is:
+
+```text
+Upload PDF
+→ Extract text
+→ Gemini structured extraction
+→ Zod validation
+→ Risk Agent evaluation
+→ SQLite persistence
+→ Human approval
+→ Casper Wallet signature
+→ Casper execution confirmation
+→ Contract state readback
+→ UI confirmation
