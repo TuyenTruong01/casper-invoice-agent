@@ -41,7 +41,7 @@ describe('Gemini invoice extractor', () => {
       .extractInvoice({ text:'invoice', filename:'test.pdf' });
     expect(result.vendor).toBe('Gemini Test Vendor');
     expect(result.amount).toBe(125.5);
-    expect(result.recipientWallet).toBe('');
+    expect(result.recipientWallet).toBeNull();
     expect(result.missingFields).toContain('recipientWallet');
   });
 

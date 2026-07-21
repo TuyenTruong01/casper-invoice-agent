@@ -105,8 +105,9 @@ async function main() {
   const target = new TransactionTarget(undefined, undefined, session);
 
   const paymentLimited = new PaymentLimitedMode();
-  paymentLimited.paymentAmount = PAYMENT_AMOUNT;
-  paymentLimited.gasPriceTolerance = 3;
+  paymentLimited.paymentAmount = Number(PAYMENT_AMOUNT);
+  paymentLimited.gasPriceTolerance = 1;
+  paymentLimited.standardPayment = true;
 
   const pricingMode = new PricingMode();
   pricingMode.paymentLimited = paymentLimited;
@@ -134,26 +135,30 @@ async function main() {
   const txV1 = TransactionV1.makeTransactionV1(payload);
   const tx = Transaction.fromTransactionV1(txV1);
 
-  tx.sign(privateKey);
-
-  console.log('Transaction built and signed.');
+  console.log('Unsigned transaction built.');
   console.log('Transaction hash:', tx.hash.toHex());
 
   console.log('');
   console.log('Transaction JSON preview:');
   try {
-    console.log(JSON.stringify(tx.toJSON(), null, 2).slice(0, 5000));
+    const preview = tx.toJSON();
+    if (preview?.payload?.fields?.target?.Session?.module_bytes) {
+      preview.payload.fields.target.Session.module_bytes = `<${wasmBytes.length} bytes omitted>`;
+    }
+    console.log(JSON.stringify(preview, null, 2));
   } catch (e) {
     console.log('Could not print tx.toJSON():', e);
   }
 
   if (!SEND) {
     console.log('');
-    console.log('DRY RUN ONLY. No transaction was submitted.');
+    console.log('DRY RUN ONLY. Transaction was not signed or submitted.');
     console.log('To submit, run again with CASPER_SEND=1');
     return;
   }
 
+  tx.sign(privateKey);
+  console.log('Transaction signed for submission.');
   console.log('');
   console.log('Submitting transaction...');
   const result = await client.putTransaction(tx);

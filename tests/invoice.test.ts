@@ -19,7 +19,7 @@ describe('invoice pipeline', () => {
     expect(() => InvoiceExtractionSchema.parse({ invoiceNumber:'INV-1' })).toThrow();
     expect(InvoiceExtractionSchema.parse({
       invoiceNumber:'INV-1', vendor:'Vendor', invoiceDate:'2026-07-01', dueDate:'2026-07-31',
-      amount:100, currency:'USD', recipientWallet:'', confidence:0.8, missingFields:['recipientWallet'],
+      amount:100, currency:'USD', recipientWallet:null, confidence:0.8, missingFields:['recipientWallet'],
     }).currency).toBe('USD');
   });
 
@@ -45,5 +45,23 @@ describe('invoice pipeline', () => {
     expect(result.flags.map(flag => flag.code)).toEqual(expect.arrayContaining(['DUPLICATE_FILE', 'WALLET_MISMATCH']));
     db.prepare('DELETE FROM invoices WHERE id IN (?, ?)').run(...ids);
     db.prepare('DELETE FROM vendor_profiles WHERE vendor = ?').run('Risk Test Vendor');
+  });
+
+  it('uses AUTO_PROPOSE for low risk and blocks a missing recipient wallet', () => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const ids = ['risk-auto', 'risk-missing-wallet'];
+    db.prepare('DELETE FROM invoices WHERE id IN (?, ?)').run(...ids);
+    const insert = db.prepare(`INSERT INTO invoices
+      (id,original_name,storage_path,file_hash,mime_type,size_bytes,extracted_text,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,'EXTRACTED',?,?)`);
+    insert.run(ids[0], 'auto.pdf', 'test', 'unique-auto', 'application/pdf', 1, 'text', now, now);
+    insert.run(ids[1], 'missing.pdf', 'test', 'unique-missing', 'application/pdf', 1, 'text', now, now);
+    const base = { invoiceNumber:'INV-AUTO', vendor:'New Vendor', invoiceDate:'2026-07-01', dueDate:'2026-07-31', amount:100, currency:'USD', confidence:0.95, missingFields:[] as string[] };
+    expect(assessInvoiceRisk(ids[0], 'unique-auto', InvoiceExtractionSchema.parse({ ...base, recipientWallet:'wallet-demo' })).decision).toBe('AUTO_PROPOSE');
+    const blocked = assessInvoiceRisk(ids[1], 'unique-missing', InvoiceExtractionSchema.parse({ ...base, invoiceNumber:'INV-MISSING', recipientWallet:null, missingFields:['recipientWallet'] }));
+    expect(blocked.decision).toBe('BLOCK');
+    expect(blocked.flags.map(flag => flag.code)).toContain('MISSING_RECIPIENT_WALLET');
+    db.prepare('DELETE FROM invoices WHERE id IN (?, ?)').run(...ids);
   });
 });

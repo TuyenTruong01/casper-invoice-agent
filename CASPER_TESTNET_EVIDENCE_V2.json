@@ -1,0 +1,104 @@
+{
+  "generatedAt": "2026-07-21T06:34:24.183Z",
+  "network": "casper-test",
+  "contractHash": "contract-665c9c51d288b2228b6146fe550744dc05002ba002f58cfd9016b4c36bdd7f27",
+  "tests": [
+    {
+      "name": "P2 proof rejected",
+      "entryPoint": "record_payment_proof",
+      "deployHash": "40b5110c52d9149672f3638f209b3e1626fe69ec26983ac016767ca64d257ba1",
+      "blockHeight": 8574362,
+      "success": false,
+      "expectedSuccess": false,
+      "expectedUserCode": 8,
+      "userCode": 8,
+      "errorMessage": "User error: 8",
+      "transfers": [],
+      "before": "proposal_id=FINAL-DEMO-002;invoice_hash=3a753202d221a2576068cb01c09fcd964f607789dff0f7c6885f5af013de0487;invoice_number_hash=56f32c6190520206a4a0e31c2138d2c3558e25690abd0747bcabdeb181ffa3b3;vendor_hash=9a3cad566fe5a1b90d8c96fbfb3342088f965f8ed4c9004155df1dd98bb69625;amount=1375;currency=USD;recipient_hash=e4c0897fec2b182fa6f931e487dd56deba3a4279fe684c56f2f4c7b97137a98a;created_by=account-hash-1fb18f386255d46ef8ac0d2131bed54e87159848dde38726068997a6331b880d;created_at=1784615554945;status=REJECTED;rejected_by=account-hash-1fb18f386255d46ef8ac0d2131bed54e87159848dde38726068997a6331b880d;rejected_at=1784615578949",
+      "after": "proposal_id=FINAL-DEMO-002;invoice_hash=3a753202d221a2576068cb01c09fcd964f607789dff0f7c6885f5af013de0487;invoice_number_hash=56f32c6190520206a4a0e31c2138d2c3558e25690abd0747bcabdeb181ffa3b3;vendor_hash=9a3cad566fe5a1b90d8c96fbfb3342088f965f8ed4c9004155df1dd98bb69625;amount=1375;currency=USD;recipient_hash=e4c0897fec2b182fa6f931e487dd56deba3a4279fe684c56f2f4c7b97137a98a;created_by=account-hash-1fb18f386255d46ef8ac0d2131bed54e87159848dde38726068997a6331b880d;created_at=1784615554945;status=REJECTED;rejected_by=account-hash-1fb18f386255d46ef8ac0d2131bed54e87159848dde38726068997a6331b880d;rejected_at=1784615578949",
+      "passed": true
+    },
+    {
+      "name": "Role add demo manager",
+      "entryPoint": "add_manager",
+      "deployHash": "2e922e83c1ee1ddbae100bf529085da51db124c6b4f84098b58ee4a799b8835d",
+      "blockHeight": 8574363,
+      "success": true,
+      "expectedSuccess": true,
+      "expectedUserCode": null,
+      "userCode": null,
+      "errorMessage": null,
+      "transfers": [],
+      "before": null,
+      "after": true,
+      "passed": true
+    },
+    {
+      "name": "Role remove demo manager",
+      "entryPoint": "remove_manager",
+      "deployHash": "c71454d22b1f2c034213e27d0d0160c29e93cb1a2a38c1904a63a64c78c1ca6b",
+      "blockHeight": 8574364,
+      "success": true,
+      "expectedSuccess": true,
+      "expectedUserCode": null,
+      "userCode": null,
+      "errorMessage": null,
+      "transfers": [],
+      "before": true,
+      "after": false,
+      "passed": true
+    },
+    {
+      "name": "Role cannot remove final admin",
+      "entryPoint": "remove_admin",
+      "deployHash": "a99d6f498a4c9c0e276eaf0abb6658b00c45691b32a89743d1a1d53d13db181f",
+      "blockHeight": 8574366,
+      "success": false,
+      "expectedSuccess": false,
+      "expectedUserCode": 15,
+      "userCode": 15,
+      "errorMessage": "User error: 15",
+      "transfers": [],
+      "before": true,
+      "after": true,
+      "passed": true
+    }
+  ],
+  "contractPackageHash": "contract-package-4838cb34754dc5ed8c5dfd0f61e688325255b6cbbe61358ad39cb1141e609aae",
+  "entryPoints": [
+    "add_admin",
+    "add_executor",
+    "add_manager",
+    "approve_invoice",
+    "create_invoice_proposal",
+    "get_invoice_proposal",
+    "record_payment_proof",
+    "reject_invoice",
+    "remove_admin",
+    "remove_executor",
+    "remove_manager"
+  ],
+  "namedKeys": [
+    "admin_count",
+    "admins",
+    "audit_log",
+    "audit_sequence",
+    "executors",
+    "invoice_hash_index",
+    "invoice_proposals",
+    "managers"
+  ],
+  "roles": {
+    "admin": true,
+    "manager": true,
+    "executor": true
+  },
+  "installerNamedKeys": [
+    {
+      "name": "invoice_payment_proof_contract_v2",
+      "key": "hash-665c9c51d288b2228b6146fe550744dc05002ba002f58cfd9016b4c36bdd7f27"
+    }
+  ],
+  "allPassed": true,
+  "transferCount": 0
+}

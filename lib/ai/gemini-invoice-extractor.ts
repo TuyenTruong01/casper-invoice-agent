@@ -65,7 +65,7 @@ export function validateAndNormalizeGeminiInvoice(rawText: string): InvoiceExtra
     dueDate: raw.dueDate ?? '',
     amount: raw.amount ?? 0,
     currency: raw.currency ?? '',
-    recipientWallet: raw.recipientWallet ?? '',
+    recipientWallet: raw.recipientWallet,
     confidence: raw.confidence,
   };
   if (!raw.invoiceNumber) missing.add('invoiceNumber');
