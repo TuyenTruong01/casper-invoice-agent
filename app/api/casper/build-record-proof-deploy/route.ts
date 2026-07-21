@@ -15,17 +15,9 @@ const {
 const CHAIN_NAME = process.env.NEXT_PUBLIC_CASPER_NETWORK || 'casper-test';
 const NAMED_KEY =
   process.env.NEXT_PUBLIC_CASPER_NAMED_KEY ||
-  'invoice_payment_proof_contract';
+  'invoice_payment_proof_contract_v2';
 
-const ENTRY_POINT = 'record_payment_proof';
 const PAYMENT_AMOUNT = '20000000000';
-
-function onlyDigitsTimestamp() {
-  return new Date()
-    .toISOString()
-    .replace(/[-:TZ.]/g, '')
-    .slice(0, 14);
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,11 +26,7 @@ export async function POST(req: NextRequest) {
     const accountPublicKey = String(body?.accountPublicKey || '').trim();
     const proposalId = String(body?.proposalId || `proposal-web-${Date.now()}`);
     const proofHash = String(body?.proofHash || `proof-web-${Date.now()}`);
-    const invoiceCount = String(body?.invoiceCount || '0');
-    const totalAmount = String(body?.totalAmount || '0');
-    const approver = String(body?.approver || 'Browser Manager');
-    const executor = String(body?.executor || 'Casper Invoice Agent Web');
-    const createdAt = String(body?.createdAt || onlyDigitsTimestamp());
+    const entryPoint = String(body?.entryPoint || 'record_payment_proof');
 
     if (!accountPublicKey) {
       return NextResponse.json(
@@ -51,17 +39,23 @@ export async function POST(req: NextRequest) {
 
     const runtimeArgs = Args.fromMap({});
     runtimeArgs.insert('proposal_id', CLValue.newCLString(proposalId));
-    runtimeArgs.insert('proof_hash', CLValue.newCLString(proofHash));
-    runtimeArgs.insert('invoice_count', CLValue.newCLUInt32(invoiceCount));
-    runtimeArgs.insert('total_amount', CLValue.newCLUint64(totalAmount));
-    runtimeArgs.insert('approver', CLValue.newCLString(approver));
-    runtimeArgs.insert('executor', CLValue.newCLString(executor));
-    runtimeArgs.insert('created_at', CLValue.newCLUint64(createdAt));
+    if (entryPoint === 'create_invoice_proposal') {
+      runtimeArgs.insert('invoice_hash', CLValue.newCLString(String(body?.invoiceHash || '')));
+      runtimeArgs.insert('invoice_number_hash', CLValue.newCLString(String(body?.invoiceNumberHash || '')));
+      runtimeArgs.insert('vendor_hash', CLValue.newCLString(String(body?.vendorHash || '')));
+      runtimeArgs.insert('amount', CLValue.newCLUint64(String(body?.amount || '0')));
+      runtimeArgs.insert('currency', CLValue.newCLString(String(body?.currency || '')));
+      runtimeArgs.insert('recipient_hash', CLValue.newCLString(String(body?.recipientHash || '')));
+    } else if (entryPoint === 'record_payment_proof') {
+      runtimeArgs.insert('payment_proof', CLValue.newCLString(proofHash));
+    } else if (entryPoint !== 'approve_invoice' && entryPoint !== 'reject_invoice' && entryPoint !== 'get_invoice_proposal') {
+      return NextResponse.json({ ok:false, error:'Unsupported contract entry point.' }, { status:400 });
+    }
 
     const session = new ExecutableDeployItem();
     session.storedContractByName = new StoredContractByName(
       NAMED_KEY,
-      ENTRY_POINT,
+      entryPoint,
       runtimeArgs
     );
 
@@ -84,8 +78,8 @@ export async function POST(req: NextRequest) {
       deploy: deployJson,
       proposalId,
       proofHash,
-      createdAt,
       deployHash: deployJson.hash,
+      entryPoint,
     });
   } catch (err: any) {
     return NextResponse.json(

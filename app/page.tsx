@@ -30,6 +30,8 @@ export default function Page(){
  const [proposal,setProposal]=useState<Proposal|null>(null);
  const [txs,setTxs]=useState<any[]>([]);
  const [aiLog,setAiLog]=useState<string[]>(['AI Agent ready. Connect a whitelisted wallet to start.']);
+ const [uploadState,setUploadState]=useState('');
+ const [uploadedInvoices,setUploadedInvoices]=useState<any[]>([]);
  const current=wallets.find(w=>w.address.toLowerCase()===connected.toLowerCase() && w.status==='ACTIVE');
  const locked=!current;
  const ready=invoices.filter(i=>['Pending','Overdue'].includes(i.status) && i.risk<60);
@@ -295,7 +297,22 @@ export default function Page(){
   restore();
  },[wallets]);
 
-  function analyze(){ if(!can(current?.role,'approve')) return alert('Only Admin or Manager can run AI analysis.'); const ids=ready.map(i=>i.id); const total=ready.reduce((s,i)=>s+i.amount+i.tax,0); setInvoices(inv=>inv.map(x=>ids.includes(x.id)?{...x,status:'Ready to Pay'}:x)); setProposal({id:'PROP-'+Date.now().toString().slice(-6),status:'Draft',invoiceIds:ids,total,createdBy:current!.name,createdAt:new Date().toLocaleString()}); setAiLog([`Scanned ${invoices.length} invoices.`,`${ids.length} invoices are safe to pay.`,`${review.length} invoices require manual review.`,`Recommended payment proposal total: ${money(total)}.`]); setTab('AI Analysis'); }
+ async function uploadAndAnalyze(file:File){
+  setUploadState('Uploading and extracting PDF text...');
+  const form=new FormData(); form.append('file',file);
+  try {
+   const uploadRes=await fetch('/api/invoices/upload',{method:'POST',body:form});
+   const uploadJson=await uploadRes.json();
+   if(!uploadJson.ok) throw new Error(uploadJson.error||'Upload failed.');
+   setUploadState(`Extracted ${uploadJson.pages} page(s). Running structured AI extraction...`);
+   const aiRes=await fetch('/api/invoices/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:uploadJson.invoice.id})});
+   const aiJson=await aiRes.json();
+   if(!aiJson.ok) throw new Error(aiJson.error||'AI analysis failed.');
+   setUploadedInvoices(xs=>[aiJson.invoice,...xs]);
+   setUploadState(`Complete: ${aiJson.invoice.invoice_number} — risk ${aiJson.invoice.risk_score} (${aiJson.invoice.risk_decision}).`);
+  } catch(err:any) { setUploadState(`Failed: ${err?.message||String(err)}`); }
+ }
+ function analyze(){ if(!can(current?.role,'approve')) return alert('Only Admin or Manager can run analysis.'); const ids=ready.map(i=>i.id); const total=ready.reduce((s,i)=>s+i.amount+i.tax,0); setInvoices(inv=>inv.map(x=>ids.includes(x.id)?{...x,status:'Ready to Pay'}:x)); setProposal({id:'PROP-'+Date.now().toString().slice(-6),status:'Draft',invoiceIds:ids,total,createdBy:current!.name,createdAt:new Date().toLocaleString()}); setAiLog([`Scanned ${invoices.length} synthetic invoices with deterministic rules.`,`${ids.length} invoices are safe to pay.`,`${review.length} invoices require manual review.`,`Recommended payment proposal total: ${money(total)}.`]); setTab('AI Analysis'); }
  function approve(){ if(!proposal) return; if(!can(current?.role,'approve')) return alert('Only Admin or Manager can approve.'); setProposal({...proposal,status:'Approved'}); setAiLog(x=>['Manager approved payment proposal.',...x]); }
  async function execute(){
   if(!proposal||proposal.status!=='Approved') return alert('Approve proposal first.');
@@ -308,7 +325,7 @@ export default function Page(){
   }
 
   const network = process.env.NEXT_PUBLIC_CASPER_NETWORK || 'casper-test';
-  const contractHash = process.env.NEXT_PUBLIC_CASPER_CONTRACT_HASH || 'contract-4e2f1bbc04fdb44e2654b014124d21b48457330b9e9031813fa6b8e1608bc991';
+  const contractHash = process.env.NEXT_PUBLIC_CASPER_CONTRACT_HASH || '';
 
   const proposalId = proposal.id;
   const proofHash = `proof-${proposal.id}-${Date.now()}`;
@@ -326,10 +343,7 @@ export default function Page(){
         accountPublicKey: connected,
         proposalId,
         proofHash,
-        invoiceCount: proposal.invoiceIds.length,
-        totalAmount: Math.round(proposal.total),
-        approver: current.name,
-        executor: 'Casper Invoice Agent Web'
+        entryPoint: 'record_payment_proof'
       })
     });
 
@@ -407,8 +421,7 @@ export default function Page(){
 
     const tx = putJson.deployHash || putJson?.rpc?.result?.deploy_hash || unsignedDeploy.hash;
 
-    setProposal({...proposal,status:'Executed',txHash:tx});
-    setInvoices(inv=>inv.map(x=>proposal.invoiceIds.includes(x.id)?{...x,status:'Paid'}:x));
+    setProposal({...proposal,txHash:tx});
     setTxs(t=>[{
       hash:tx,
       type:'PaymentBatchProof',
@@ -416,7 +429,7 @@ export default function Page(){
       by:current.name,
       time:new Date().toLocaleString(),
       network:`Casper Testnet (${network})`,
-      status:'Submitted',
+      status:'Confirming',
       blockHeight:'Pending',
       contractHash,
       proposalId,
@@ -427,9 +440,22 @@ export default function Page(){
       `Contract: ${contractHash}`,
       `Proposal ID: ${proposalId}`,
       `Proof hash: ${proofHash}`,
-      'Status: submitted. Confirm with get-deploy until error_message is null.',
+      'Status: submitted. Waiting for on-chain execution confirmation.',
       ...x
     ]);
+    let confirmed:any=null;
+    for(let attempt=0;attempt<24;attempt++){
+      const checkRes=await fetch('/api/casper/execution-result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deployHash:tx})});
+      const check=await checkRes.json();
+      if(check.ok&&!check.pending){confirmed=check;break;}
+      await new Promise(resolve=>setTimeout(resolve,5000));
+    }
+    if(!confirmed) throw new Error('Deploy was submitted but confirmation timed out. Invoice status was not changed.');
+    if(!confirmed.success) throw new Error(`On-chain execution failed: ${confirmed.errorMessage||'unknown error'}`);
+    setProposal({...proposal,status:'Executed',txHash:tx});
+    setInvoices(inv=>inv.map(x=>proposal.invoiceIds.includes(x.id)?{...x,status:'Paid'}:x));
+    setTxs(items=>items.map(item=>item.hash===tx?{...item,status:'Confirmed',blockHeight:confirmed.blockHeight}:item));
+    setAiLog(x=>[`On-chain execution confirmed at block ${confirmed.blockHeight}. Invoices marked Paid.`,...x]);
   } catch(err:any) {
     console.error(err);
     alert(err?.message || String(err));
@@ -453,9 +479,9 @@ export default function Page(){
       <span>Deploy hash: {proposal.txHash}</span>
       <span>Block height: Pending</span>
       <span className="muted">Verification: check this deploy hash on Casper Testnet. A successful execution shows error_message: null.</span>
-      <span>Contract: {short(process.env.NEXT_PUBLIC_CASPER_CONTRACT_HASH || 'contract-4e2f1bbc04fdb44e2654b014124d21b48457330b9e9031813fa6b8e1608bc991')}</span>
+      <span>Contract: {process.env.NEXT_PUBLIC_CASPER_CONTRACT_HASH ? short(process.env.NEXT_PUBLIC_CASPER_CONTRACT_HASH) : 'V2 not deployed'}</span>
     </>}</div>:<p className="muted">No proposal yet. Run AI Analyze All.</p>}</div></div><InvoiceTable invoices={invoices.slice(0,8)}/></div>)}
- {tab==='Invoices'&&shell(<div className="grid"><div className="card row"><div><h3>Invoice Workspace</h3><p className="muted">50 synthetic PDF invoices. Each row has a public PDF for judge review.</p></div><button className="btn gray"><Upload size={16}/> Upload Invoice</button></div><InvoiceTable invoices={invoices}/></div>)}
+ {tab==='Invoices'&&shell(<div className="grid"><div className="card row"><div><h3>Invoice Workspace</h3><p className="muted">Upload a PDF for server-side text extraction, schema-validated AI extraction, SQLite persistence and risk analysis.</p>{uploadState&&<p className="notice">{uploadState}</p>}</div><label className="btn gray"><Upload size={16}/> Upload Invoice<input type="file" accept="application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)uploadAndAnalyze(f);e.currentTarget.value=''}}/></label></div>{uploadedInvoices.length>0&&<div className="card"><h3>Uploaded & analyzed</h3><table className="table"><thead><tr><th>Invoice</th><th>Vendor</th><th>Amount</th><th>Confidence</th><th>Risk</th><th>Decision</th></tr></thead><tbody>{uploadedInvoices.map(i=><tr key={i.id}><td>{i.invoice_number}</td><td>{i.vendor}</td><td>{i.currency} {i.amount}</td><td>{i.confidence}</td><td>{i.risk_score}</td><td>{i.risk_decision}</td></tr>)}</tbody></table></div>}<InvoiceTable invoices={invoices}/></div>)}
  {tab==='Vendors'&&shell(<div className="card"><h3>Vendor Profiles</h3><table className="table"><thead><tr><th>Vendor</th><th>Category</th><th>Risk</th><th>Invoices</th><th>Total</th><th>Avg Pay Days</th></tr></thead><tbody>{seedVendors.map(v=><tr key={v.id}><td><b>{v.name}</b></td><td>{v.category}</td><td>{v.risk}</td><td>{v.invoices}</td><td>{money(v.total)}</td><td>{v.avgPayDays}</td></tr>)}</tbody></table></div>)}
  {tab==='AI Analysis'&&shell(<div className="grid split"><div className="card"><h3>AI Agent Findings</h3><div className="list">{aiLog.map((l,i)=><div key={i} className={i===0?'ok':'notice'}>{l}</div>)}</div></div><div className="card"><h3>Risk Queue</h3><div className="list">{review.slice(0,10).map(i=><div key={i.id} className="notice"><b>{i.id}</b> — {i.vendor}<br/><span>{i.status}: {i.note}</span></div>)}</div></div></div>)}
  {tab==='Payments & Escrow'&&shell(<div className="grid split"><div className="card"><h3>Payment Proposal</h3>{proposal?<div className="list"><p><b>{proposal.id}</b> generated by {proposal.createdBy}</p><p>Status: <b>{proposal.status}</b></p><p>Invoices: <b>{proposal.invoiceIds.length}</b></p><p>Total with tax: <b>{money(proposal.total)}</b></p><div className="actions"><button className="btn green" onClick={approve} disabled={proposal.status!=='Draft'||!can(current?.role,'approve')}>Approve</button><button className="btn primary" onClick={execute} disabled={proposal.status!=='Approved'||!can(current?.role,'approve')}>Execute Casper Payment Proof</button></div></div>:<p className="muted">Run AI analysis to create a proposal.</p>}</div><div className="card"><h3>Permission</h3><p>Current role: <b>{current?.role}</b></p><p className="muted">Employee can view/upload only. Manager can approve and execute. Admin can manage wallets.</p></div></div>)}

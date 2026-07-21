@@ -10,3 +10,7 @@ target/
 .env.local
 keys/
 *.pem
+
+# Runtime invoice data
+data/runtime/
+data/uploads/
