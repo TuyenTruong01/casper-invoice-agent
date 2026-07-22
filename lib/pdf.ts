@@ -1,16 +1,32 @@
-import { PDFParse } from 'pdf-parse';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 
-export async function extractPdfText(bytes: Uint8Array) {
-  PDFParse.setWorker(pathToFileURL(path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs')).href);
-  const parser = new PDFParse({ data: bytes });
+type PdfInput = Buffer | Uint8Array;
+
+function normalizePdfText(value: string): string {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\t\f\v ]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export async function extractPdfText(input: PdfInput): Promise<{ text: string; pages: number }> {
+  if (!input || input.byteLength === 0) throw new Error('PDF input is empty.');
+
+  let data: { text?: string; numpages?: number };
   try {
-    const result = await parser.getText();
-    const text = result.text.trim();
-    if (!text) throw new Error('PDF contains no extractable text. OCR is not configured.');
-    return { text, pages: result.pages.length };
-  } finally {
-    await parser.destroy();
+    data = await pdfParse(Buffer.isBuffer(input) ? input : Buffer.from(input), {
+      // pdf-parse 1.1.1 bundles this server-side engine; it has no browser worker.
+      version:'v2.0.550',
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'unknown parser error';
+    throw new Error(`PDF text extraction failed: ${detail}`);
   }
+  const text = normalizePdfText(String(data.text || ''));
+  if (!text) throw new Error('PDF contains no extractable text. OCR is not implemented.');
+
+  return { text, pages:Number(data.numpages || 0) };
 }

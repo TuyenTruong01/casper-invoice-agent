@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowUpRight, Bot, Check, CheckCircle2, ChevronRight,
-  CircleDollarSign, Clock3, Database, FileCheck2, FileText, Fingerprint, Gauge,
+  Database, FileCheck2, FileText, Fingerprint, Gauge,
   LayoutDashboard, Link2, LoaderCircle, LogOut, Menu, Network, Search, Shield,
   ShieldAlert, Sparkles, Upload, Wallet, X, XCircle,
 } from 'lucide-react';
@@ -30,8 +30,26 @@ const NETWORK = process.env.NEXT_PUBLIC_CASPER_NETWORK || 'casper-test';
 function short(value=''){ return value ? `${value.slice(0,8)}…${value.slice(-6)}` : '—'; }
 function date(value?:string){ return value ? new Date(value).toLocaleString('vi-VN',{dateStyle:'medium',timeStyle:'short'}) : '—'; }
 function amount(value:any,currency='USD'){ return new Intl.NumberFormat('en-US',{style:'currency',currency:currency||'USD',maximumFractionDigits:2}).format(Number(value||0)); }
-function statusTone(value=''){ const x=value.toUpperCase(); if(['PAID','APPROVED','EXECUTED','AUTO_PROPOSE'].includes(x))return 'good'; if(['BLOCK','FAILED','REJECTED'].includes(x))return 'bad'; if(['ESCALATE','MANAGER_REVIEW'].includes(x))return 'warn'; return 'neutral'; }
+function statusTone(value?: string | null) {
+  const x = String(value ?? '').toUpperCase();
+
+  if (['PAID', 'APPROVED', 'EXECUTED', 'AUTO_PROPOSE'].includes(x)) {
+    return 'good';
+  }
+
+  if (['BLOCK', 'FAILED', 'ERROR', 'REJECTED'].includes(x)) {
+    return 'bad';
+  }
+
+  if (['ESCALATE', 'MANAGER_REVIEW'].includes(x)) {
+    return 'warn';
+  }
+
+  return 'neutral';
+}
 function explorer(hash:string){ return `https://testnet.cspr.live/transaction/${hash}`; }
+async function apiJson(response:Response){const text=await response.text();let data:Record<string,any>;try{data=text?JSON.parse(text):{};}catch{throw new Error(`API returned a non-JSON response (${response.status})`)}if(!response.ok||data.ok===false)throw new Error(String(data.error||`Request failed (${response.status})`));return data}
+function transferCount(value:string){try{const parsed=JSON.parse(value||'[]');return Array.isArray(parsed)?parsed.length:0}catch{return 0}}
 
 export default function Page(){
   const [view,setView]=useState<View>('overview');
@@ -59,11 +77,64 @@ export default function Page(){
     anchored:data.invoices.filter(i=>i.contract_state==='PAID').length,
   }),[data.invoices]);
 
-  async function refresh(){
-    try { const r=await fetch('/api/invoices',{cache:'no-store'}); const j=await r.json(); if(!j.ok)throw new Error(j.error); setData(j); setSelected(x=>x||j.invoices?.[0]?.id||''); }
-    catch(e:any){ setMessage(`Không thể tải SQLite: ${e.message||e}`); }
-    finally{ setLoading(false); }
+  async function refresh() {
+  setLoading(true);
+
+  try {
+    const response = await fetch('/api/invoices', {
+      cache: 'no-store',
+    });
+
+    const raw = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        raw.trim() ||
+          `API /api/invoices trả lỗi HTTP ${response.status}`,
+      );
+    }
+
+    if (!raw.trim()) {
+      throw new Error('API /api/invoices trả về response rỗng');
+    }
+
+    let result: Data & {
+      ok?: boolean;
+      error?: string;
+    };
+
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      throw new Error(
+        `API /api/invoices không trả JSON hợp lệ: ${raw.slice(0, 200)}`,
+      );
+    }
+
+    if (result.ok === false) {
+      throw new Error(result.error || 'Không thể tải dữ liệu Supabase');
+    }
+
+    setData({
+      invoices: Array.isArray(result.invoices) ? result.invoices : [],
+      proposals: Array.isArray(result.proposals) ? result.proposals : [],
+      actions: Array.isArray(result.actions) ? result.actions : [],
+      audit: Array.isArray(result.audit) ? result.audit : [],
+    });
+
+    setSelected((current) => {
+      if (current) return current;
+      return result.invoices?.[0]?.id || '';
+    });
+  } catch (error: unknown) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+
+    setMessage(`Không thể tải Supabase: ${detail}`);
+  } finally {
+    setLoading(false);
   }
+}
   useEffect(()=>{
     // Initial API hydration is intentionally owned by this client dashboard.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -91,9 +162,9 @@ export default function Page(){
     setUploading(true); setMessage('Đang đọc PDF thật…');
     try{
       const form=new FormData();form.append('file',file);
-      const up=await fetch('/api/invoices/upload',{method:'POST',body:form});const uj=await up.json();if(!uj.ok)throw new Error(uj.error);
+      const up=await fetch('/api/invoices/upload',{method:'POST',body:form});const uj=await apiJson(up);
       setMessage(`Đã đọc ${uj.pages} trang. Gemini đang trích xuất JSON…`);
-      const ar=await fetch('/api/invoices/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:uj.invoice.id})});const aj=await ar.json();if(!aj.ok)throw new Error(aj.error);
+      const ar=await fetch('/api/invoices/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:uj.invoice.id})});const aj=await apiJson(ar);
       await refresh();setSelected(aj.invoice.id);setView('invoices');setMessage(`Hoàn tất: Risk Agent → ${aj.invoice.risk_decision}.`);
     }catch(e:any){setMessage(`Upload thất bại: ${e.message||e}`)}finally{setUploading(false)}
   }
@@ -101,19 +172,19 @@ export default function Page(){
   async function runOnChain(entryPoint:string){
     if(!selectedInvoice||!connected)return setMessage('Hãy chọn invoice và kết nối Casper Wallet.');
     const p=provider();if(!p?.sign)return setMessage('Wallet không hỗ trợ ký deploy.');
-    setBusyAction(entryPoint);setMessage('Backend đang dựng deploy từ dữ liệu SQLite…');
+    setBusyAction(entryPoint);setMessage('Backend đang dựng deploy từ dữ liệu Supabase…');
     try{
       const br=await fetch('/api/casper/build-record-proof-deploy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invoiceId:selectedInvoice.id,accountPublicKey:connected,entryPoint})});
-      const bj=await br.json();if(!bj.ok)throw new Error(bj.error);
+      const bj=await apiJson(br);
       const signed=await p.sign(JSON.stringify(bj.deploy),connected);if(signed?.cancelled)throw new Error('Bạn đã hủy ký.');
       const raw=signed?.signatureHex||signed?.signature;if(!raw)throw new Error('Wallet không trả signature.');
       const signature=raw.startsWith('01')||raw.startsWith('02')?raw:`${connected.slice(0,2)}${raw}`;
       const deploy={...bj.deploy,approvals:[{signer:connected,signature}]};
       const pr=await fetch('/api/casper/put-deploy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deploy,actionId:bj.actionId})});
-      const pj=await pr.json();if(!pj.ok)throw new Error(pj.error);
+      const pj=await apiJson(pr);
       const hash=pj.deployHash||bj.deployHash;setMessage(`Đã gửi ${short(hash)}. Đang chờ execution…`);
       let done:any=null;
-      for(let i=0;i<60;i++){const rr=await fetch('/api/casper/execution-result',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deployHash:hash,actionId:bj.actionId})});const rj=await rr.json();if(!rj.ok)throw new Error(rj.error);if(!rj.pending){done=rj;break}await new Promise(r=>setTimeout(r,5000))}
+      for(let i=0;i<60;i++){const rr=await fetch('/api/casper/execution-result',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deployHash:hash,actionId:bj.actionId})});const rj=await apiJson(rr);if(!rj.pending){done=rj;break}await new Promise(r=>setTimeout(r,5000))}
       if(!done)throw new Error('Hết thời gian chờ; trạng thái local chưa thay đổi.');
       if(!done.success)throw new Error(`Execution bị revert: ${done.errorMessage}`);
       await refresh();setMessage(`Execution thành công tại block ${done.blockHeight}. State đã được đồng bộ từ kết quả chain.`);
@@ -125,7 +196,7 @@ export default function Page(){
       <div className="brand"><div className="brandmark"><Fingerprint size={22}/></div><div><strong>InvoiceOS</strong><span>Casper proof console</span></div><button className="closeNav" onClick={()=>setMobileNav(false)}><X/></button></div>
       <nav>{views.map(([id,label,Icon])=><button key={id} className={view===id?'active':''} onClick={()=>{setView(id);setMobileNav(false)}}><Icon size={18}/><span>{label}</span><ChevronRight size={15}/></button>)}</nav>
       <div className="sideProof"><div className="pulseDot"/><span>Contract V2 live</span><strong>{short(CONTRACT)}</strong><small>{NETWORK} · payment proof only</small></div>
-      <div className="sideFoot"><Database size={16}/><span>SQLite persistent storage</span></div>
+      <div className="sideFoot"><Database size={16}/><span>Supabase persistent storage</span></div>
     </aside>
 
     <main>
@@ -192,9 +263,17 @@ function InvoiceWorkspace({invoices,query,setQuery,selected,setSelected,invoice,
 
 function RiskView({invoices}:{invoices:Invoice[]}){return <div className="riskColumns">{[['AUTO_PROPOSE','Auto propose','Policy checks passed'],['ESCALATE','Manager review','Human decision required'],['BLOCK','Blocked','No proposal / no transaction']].map(([key,title,sub])=><section className="riskLane" key={key}><div className="laneHead"><Badge value={key}/><b>{title}</b><span>{sub}</span><strong>{invoices.filter(i=>i.risk_decision===key).length}</strong></div>{invoices.filter(i=>i.risk_decision===key).map(i=><div className="riskCard" key={i.id}><div><b>{i.invoice_number||i.original_name}</b><span>{i.vendor}</span></div><strong>{amount(i.amount,i.currency)}</strong><div className="score"><span style={{width:`${i.risk_score||0}%`}}/><small>Risk {i.risk_score??'—'}</small></div>{i.risk_flags?.[0]&&<p>{i.risk_flags[0].message}</p>}</div>)}</section>)}</div>}
 
-function ChainView({actions,audit}:{actions:ChainAction[];audit:Audit[]}){return <div className="pageGrid"><section className="panel wide"><PanelTitle title="Blockchain actions" sub="Built, submitted and executed deploys persisted in SQLite"/><div className="tableWrap"><table><thead><tr><th>Action</th><th>Proposal</th><th>Execution</th><th>Block</th><th>Deploy</th><th>Transfers</th></tr></thead><tbody>{actions.map(a=><tr key={a.id}><td><b>{String(a.action).replaceAll('_',' ')}</b></td><td>{short(a.proposal_id)}</td><td><Badge value={a.execution_status}/>{a.error_message&&<small className="tableError">{a.error_message}</small>}</td><td>{a.block_height||'—'}</td><td>{a.deploy_hash?<a href={explorer(a.deploy_hash)} target="_blank" rel="noreferrer">{short(a.deploy_hash)} <ArrowUpRight size={12}/></a>:'—'}</td><td>{JSON.parse(a.transfers_json||'[]').length}</td></tr>)}</tbody></table></div></section><section className="panel proofPanel"><div className="proofIcon"><Shield/></div><h3>Truthful settlement claim</h3><p>This application anchors approval and payment-proof evidence. It does not transfer vendor funds or release escrow.</p><div className="proofStat"><span>State meaning</span><b>PAID = proof anchored</b></div></section><section className="panel wide"><PanelTitle title="Audit history" sub="Append-only application events"/><div className="auditList">{audit.map(a=><div key={a.id}><span className="auditDot"/><div><b>{a.event}</b><small>{short(a.proposal_id)} · {date(a.created_at)}</small></div></div>)}</div></section></div>}
+function ChainView({actions,audit}:{actions:ChainAction[];audit:Audit[]}){return <div className="pageGrid"><section className="panel wide"><PanelTitle title="Blockchain actions" sub="Built, submitted and executed deploys persisted in Supabase"/><div className="tableWrap"><table><thead><tr><th>Action</th><th>Proposal</th><th>Execution</th><th>Block</th><th>Deploy</th><th>Transfers</th></tr></thead><tbody>{actions.map(a=><tr key={a.id}><td><b>{String(a.action).replaceAll('_',' ')}</b></td><td>{short(a.proposal_id)}</td><td><Badge value={a.execution_status}/>{a.error_message&&<small className="tableError">{a.error_message}</small>}</td><td>{a.block_height||'—'}</td><td>{a.deploy_hash?<a href={explorer(a.deploy_hash)} target="_blank" rel="noreferrer">{short(a.deploy_hash)} <ArrowUpRight size={12}/></a>:'—'}</td><td>{transferCount(a.transfers_json)}</td></tr>)}</tbody></table></div></section><section className="panel proofPanel"><div className="proofIcon"><Shield/></div><h3>Truthful settlement claim</h3><p>This application anchors approval and payment-proof evidence. It does not transfer vendor funds or release escrow.</p><div className="proofStat"><span>State meaning</span><b>PAID = proof anchored</b></div></section><section className="panel wide"><PanelTitle title="Audit history" sub="Append-only application events"/><div className="auditList">{audit.map(a=><div key={a.id}><span className="auditDot"/><div><b>{a.event}</b><small>{short(a.proposal_id)} · {date(a.created_at)}</small></div></div>)}</div></section></div>}
 
 function Metric({icon:Icon,label,value,tone='blue'}:any){return <div className={`metricCard ${tone}`}><div><Icon size={18}/></div><span>{label}</span><b>{value}</b></div>}
-function Badge({value='' }:{value?:string}){return <span className={`badge ${statusTone(value)}`}>{String(value||'PENDING').replaceAll('_',' ')}</span>}
+function Badge({ value }: { value?: string | null }) {
+  const label = String(value ?? 'PENDING').replaceAll('_', ' ');
+
+  return (
+    <span className={`badge ${statusTone(value)}`}>
+      {label}
+    </span>
+  );
+}
 function PanelTitle({title,sub}:{title:string;sub:string}){return <div className="panelTitle"><div><h3>{title}</h3><p>{sub}</p></div><Activity size={18}/></div>}
 function InvoiceRows({rows}:{rows:Invoice[]}){return <div className="recentRows">{rows.map(i=><div key={i.id}><div className="docIcon"><FileText size={17}/></div><div><b>{i.invoice_number||i.original_name}</b><span>{i.vendor||'Awaiting extraction'} · {date(i.created_at)}</span></div><strong>{amount(i.amount,i.currency)}</strong><Badge value={i.risk_decision||i.ai_status}/></div>)}</div>}
