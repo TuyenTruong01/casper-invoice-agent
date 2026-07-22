@@ -5,7 +5,7 @@ import {
   Activity, AlertTriangle, ArrowUpRight, Bot, Check, CheckCircle2, ChevronRight,
   Database, FileCheck2, FileText, Fingerprint, Gauge,
   LayoutDashboard, Link2, LoaderCircle, LogOut, Menu, Network, Search, Shield,
-  ShieldAlert, Sparkles, Upload, Wallet, X, XCircle,
+  ShieldAlert, Sparkles, Trash2, Upload, Wallet, X, XCircle,
 } from 'lucide-react';
 import { initialWallets } from '../data/seed';
 
@@ -63,10 +63,11 @@ export default function Page(){
   const [connected,setConnected]=useState('');
   const [walletState,setWalletState]=useState<'idle'|'connecting'|'connected'|'unknown'>('idle');
   const [busyAction,setBusyAction]=useState('');
+  const [deleting,setDeleting]=useState('');
 
   const walletUser=initialWallets.find(w=>w.address.toLowerCase()===connected.toLowerCase()&&w.status==='ACTIVE');
   const proposalByInvoice=useMemo(()=>new Map(data.proposals.map(p=>[p.invoice_id,p])),[data.proposals]);
-  const selectedInvoice=data.invoices.find(i=>i.id===selected)||data.invoices[0];
+  const selectedInvoice=selected ? data.invoices.find(i=>i.id===selected) : undefined;
   const selectedProposal=selectedInvoice?proposalByInvoice.get(selectedInvoice.id):undefined;
   const filtered=data.invoices.filter(i=>`${i.invoice_number} ${i.vendor} ${i.original_name}`.toLowerCase().includes(query.toLowerCase()));
   const metrics=useMemo(()=>({
@@ -169,6 +170,19 @@ export default function Page(){
     }catch(e:any){setMessage(`Upload thất bại: ${e.message||e}`)}finally{setUploading(false)}
   }
 
+  async function deleteDocument(invoice:Invoice){
+    if(!window.confirm('Delete this uploaded document and its local records? This cannot be undone.'))return;
+    setDeleting(invoice.id);
+    try{
+      const response=await fetch(`/api/invoices/${encodeURIComponent(invoice.id)}`,{method:'DELETE'});
+      await apiJson(response);
+      await refresh();
+      setSelected('');
+      setMessage('Document deleted.');
+    }catch(error){setMessage(error instanceof Error?error.message:String(error))}
+    finally{setDeleting('')}
+  }
+
   async function runOnChain(entryPoint:string){
     if(!selectedInvoice||!connected)return setMessage('Hãy chọn invoice và kết nối Casper Wallet.');
     const p=provider();if(!p?.sign)return setMessage('Wallet không hỗ trợ ký deploy.');
@@ -212,7 +226,7 @@ export default function Page(){
       {message&&<div className="toast"><Sparkles size={17}/><span>{message}</span><button onClick={()=>setMessage('')}><X size={15}/></button></div>}
       {loading?<div className="loading"><LoaderCircle className="spin"/>Loading persisted workflow…</div>:<>
         {view==='overview'&&<Overview metrics={metrics} data={data} setView={setView}/>}
-        {view==='invoices'&&<InvoiceWorkspace invoices={filtered} query={query} setQuery={setQuery} selected={selected} setSelected={setSelected} invoice={selectedInvoice} proposal={selectedProposal} upload={upload} uploading={uploading} connected={!!connected} run={runOnChain} busy={busyAction}/>}
+        {view==='invoices'&&<InvoiceWorkspace invoices={filtered} query={query} setQuery={setQuery} selected={selected} setSelected={setSelected} invoice={selectedInvoice} proposal={selectedProposal} upload={upload} uploading={uploading} connected={!!connected} run={runOnChain} busy={busyAction} deleteDocument={deleteDocument} deleting={deleting}/>}
         {view==='risk'&&<RiskView invoices={data.invoices}/>}
         {view==='chain'&&<ChainView actions={data.actions} audit={data.audit}/>}
       </>}
@@ -232,15 +246,16 @@ function Overview({metrics,data,setView}:{metrics:any;data:Data;setView:(v:View)
   </div>
 }
 
-function InvoiceWorkspace({invoices,query,setQuery,selected,setSelected,invoice,proposal,upload,uploading,connected,run,busy}:any){
+function InvoiceWorkspace({invoices,query,setQuery,selected,setSelected,invoice,proposal,upload,uploading,connected,run,busy,deleteDocument,deleting}:any){
   const state=proposal?.onchain_status||'NOT ON-CHAIN';
   const allowed=invoice?.risk_decision==='AUTO_PROPOSE';
+  const preserved=!!invoice&&(!!proposal||!!invoice.proposal_id||!!invoice.deploy_hash||!!invoice.contract_state||['PENDING','APPROVED','REJECTED','PAID'].includes(String(invoice.status||invoice.approval_status||'').toUpperCase()));
   return <div className="workspace">
     <section className="panel invoiceList"><div className="toolbar"><label className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search invoices…"/></label><label className={`upload ${uploading?'disabled':''}`}><Upload size={16}/>{uploading?'Processing…':'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)upload(f);e.currentTarget.value=''}}/></label></div>
       <div className="invoiceScroll">{invoices.length?invoices.map((i:Invoice)=><button className={`invoiceItem ${selected===i.id?'selected':''}`} key={i.id} onClick={()=>setSelected(i.id)}><div className="docIcon"><FileText size={18}/></div><div><b>{i.invoice_number||i.original_name}</b><span>{i.vendor||'Awaiting extraction'}</span></div><div className="itemRight"><strong>{amount(i.amount,i.currency)}</strong><Badge value={i.risk_decision||i.ai_status}/></div></button>):<div className="empty"><FileText/><b>No invoices yet</b><span>Upload a real PDF to begin.</span></div>}</div>
     </section>
     <section className="detailColumn">{invoice?<>
-      <div className="panel detailHero"><div><div className="eyebrow">Invoice intelligence</div><h2>{invoice.invoice_number||invoice.original_name}</h2><p>{invoice.vendor||'Vendor not extracted'} · {date(invoice.invoice_date)}</p></div><Badge value={invoice.risk_decision||invoice.status}/></div>
+      <div className="panel detailHero"><div><div className="eyebrow">Invoice intelligence</div><h2>{invoice.invoice_number||invoice.original_name}</h2><p>{invoice.vendor||'Vendor not extracted'} · {date(invoice.invoice_date)}</p></div><div className="detailHeroActions"><Badge value={invoice.risk_decision||invoice.status}/>{preserved?<span className="preservedLabel"><Shield size={14}/>On-chain record preserved</span>:<button className="deleteDocument" disabled={deleting===invoice.id} onClick={()=>deleteDocument(invoice)} title="Delete document">{deleting===invoice.id?<LoaderCircle className="spin" size={15}/>:<Trash2 size={15}/>}Delete document</button>}</div></div>
       <div className="detailStats"><div><span>Amount</span><b>{amount(invoice.amount,invoice.currency)}</b></div><div><span>Confidence</span><b>{Math.round(Number(invoice.confidence||0)*100)}%</b></div><div><span>Risk score</span><b>{invoice.risk_score??'—'} / 100</b></div><div><span>Recipient</span><b>{short(invoice.recipient_wallet)}</b></div></div>
       <div className="panel"><PanelTitle title="Risk Agent decision" sub="Provider-independent controls, evaluated from persisted facts"/><div className="riskDecision"><div className={`riskGauge ${statusTone(invoice.risk_decision)}`}><Gauge/><b>{invoice.risk_score??'—'}</b></div><div><Badge value={invoice.risk_decision}/><p>{invoice.risk_decision==='AUTO_PROPOSE'?'No blocking risk was detected. A backend proposal is ready for human-controlled on-chain workflow.':invoice.risk_decision==='ESCALATE'?'Anomaly requires Manager review. No Casper proposal is allowed yet.':'Critical policy violation. Proposal creation and blockchain submission are blocked.'}</p></div></div>
         {(invoice.risk_flags||[]).map((f:any)=><div className="flag" key={f.code}><AlertTriangle size={16}/><span><b>{f.code}</b>{f.message}<small>{f.evidence}</small></span></div>)}
