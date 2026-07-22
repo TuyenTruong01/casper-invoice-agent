@@ -18,6 +18,7 @@ create table if not exists public.invoices (
   confidence numeric,
   missing_fields jsonb not null default '[]'::jsonb,
   ai_model text,
+  pdf_parser text,
   ai_status text not null default 'PENDING',
   ai_error text,
   risk_score integer,
