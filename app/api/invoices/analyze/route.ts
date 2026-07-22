@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
       confidence:x.confidence,
       missing_fields:x.missingFields,
       ai_model:ai.model,
+      pdf_parser:extracted.parser,
       ai_status:'COMPLETE',
       ai_error:null,
       extracted_text:extracted.text,

@@ -1,0 +1,1 @@
+.reportButton{border:0;background:var(--teal);color:white;border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700}.reportButton:disabled{opacity:.55}
