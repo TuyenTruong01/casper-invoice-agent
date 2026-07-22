@@ -1,0 +1,27 @@
+.detailHeroActions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.deleteDocument {
+  border: 1px solid #f0cdd1;
+  background: #fff7f8;
+  color: #b93441;
+  border-radius: 9px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.deleteDocument:disabled { opacity: .5; }
+.preservedLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
