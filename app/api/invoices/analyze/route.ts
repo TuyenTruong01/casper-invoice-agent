@@ -4,7 +4,7 @@ import { GeminiExtractionError, GeminiInvoiceExtractor } from '../../../../lib/a
 import { appendAudit, getInvoice, serializeInvoice, updateInvoice } from '../../../../lib/db';
 import { assessInvoiceRisk } from '../../../../lib/risk-agent';
 import { getInvoiceBucket, getSupabaseAdmin } from '../../../../lib/supabase/server';
-import { extractPdfText } from '../../../../lib/pdf';
+import { extractPdfText, PdfExtractionError } from '../../../../lib/pdf';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,13 +72,18 @@ export async function POST(req: NextRequest) {
     }
 
     await appendAudit(id, proposalId, 'RISK_ASSESSED', null, { score:risk.score, decision:risk.decision, flags:risk.flags });
-    return NextResponse.json({ ok:true, pages:extracted.pages, responseId:ai.responseId, invoice:serializeInvoice((await getInvoice(id))!) });
+    return NextResponse.json({ ok:true, pages:extracted.pages, parser:extracted.parser, responseId:ai.responseId, invoice:serializeInvoice((await getInvoice(id))!) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (id) {
-      try { await updateInvoice(id, { ai_status:'ERROR', ai_error:message, updated_at:new Date().toISOString() }); } catch { /* preserve original error */ }
+      try { await updateInvoice(id, {
+        ai_status:'ERROR', ai_error:message, updated_at:new Date().toISOString(),
+        ...(error instanceof PdfExtractionError ? {
+          extracted_text:'',risk_decision:null,risk_score:null,risk_flags:[],status:'EXTRACTION_FAILED',proposal_id:null,approval_status:'NOT_REQUESTED',
+        } : {}),
+      }); } catch { /* preserve original error */ }
     }
-    const status = error instanceof GeminiExtractionError
+    const status = error instanceof PdfExtractionError ? 422 : error instanceof GeminiExtractionError
       ? error.code === 'CONFIG' ? 503 : error.code === 'UPSTREAM' || error.code === 'TIMEOUT' ? 502 : 422
       : 500;
     let invoice = null;
