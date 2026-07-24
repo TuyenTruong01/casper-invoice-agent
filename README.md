@@ -54,5 +54,8 @@ Upload PDF
 
 ## License
 
-This project is licensed under the MIT License.
-See the [LICENSE](LICENSE) file for details.
+The original source code of this project is licensed under the MIT License. See [LICENSE](./LICENSE).
+This project depends on third-party software that remains subject to its own license terms.
+In particular, the `mupdf` package is licensed under the GNU Affero General Public License, version 3 or later (`AGPL-3.0-or-later`), and is also available from Artifex under a commercial license.
+The MIT License for this repository does not replace, override, or limit the license obligations of MuPDF or any other third-party dependency. Anyone deploying, distributing, modifying, or commercially using this project must review and comply with the applicable third-party licenses.
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for details.
