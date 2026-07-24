@@ -45,13 +45,15 @@ Upload PDF
 → Gemini structured extraction
 → Zod validation
 → Risk Agent evaluation
-→ SQLite persistence
+→ Supabase persistence
 → Human approval
 → Casper Wallet signature
 → Casper execution confirmation
 → Contract state readback
 → UI confirmation
+```
 
+---
 ## License
 
 The original source code of this project is licensed under the MIT License. See [LICENSE](./LICENSE).
